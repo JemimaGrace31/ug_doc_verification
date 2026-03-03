@@ -1,0 +1,6 @@
+/assets/uploads/
+/vendor/
+/node_modules/
+.env
+*.log
+*.sql

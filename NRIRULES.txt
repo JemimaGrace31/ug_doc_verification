@@ -1,0 +1,768 @@
+NRI_RULES.PHP
+
+<!-- <?php
+
+function runNriRules(array $allDocuments): array
+{
+    $flags = [];
+    $cutoffDate = '2025-03-01';
+    $today = date('Y-m-d');
+
+    /* =========================
+       1. Mandatory Documents
+    ========================== */
+    $mandatoryDocs = [
+        'NRI CERTIFICATE'         => 'Recent NRI status certificate',
+        'EMPLOYMENT CERTIFICATE'  => 'Employment certificate of NRI',
+        'NRI BANK STATEMENT'      => 'NRI bank account statement',
+        'PARENT PASSPORT'         => 'Valid Indian passport of parent/guardian',
+        'VISA'                    => 'Valid visa / residence permit',
+        'BIRTH CERTIFICATE'       => 'Birth certificate / passport of candidate',
+        'SCHOOL TC'               => 'School TC / Migration certificate'
+    ];
+
+    foreach ($mandatoryDocs as $key => $label) {
+        if (!isset($allDocuments[$key])) {
+            $flags[] = [
+                'type' => 'CRITICAL',
+                'message' => "Missing mandatory document: $label"
+            ];
+        }
+    }
+
+    /* =========================
+       2. NRI Certificate Rules
+    ========================== */
+    if (isset($allDocuments['NRI CERTIFICATE'])) {
+
+        $nri = $allDocuments['NRI CERTIFICATE'];
+
+        if (empty($nri)) {
+            $flags[] = [
+                'type' => 'WARNING',
+                'message' => 'NRI certificate uploaded but OCR extraction failed'
+            ];
+        } else {
+
+            if (!empty($nri['issue_date']) && $nri['issue_date'] < $cutoffDate) {
+                $flags[] = [
+                    'type' => 'CRITICAL',
+                    'message' => "NRI certificate issued before 1 March 2025 ({$nri['issue_date']})"
+                ];
+            }
+
+            if (empty($nri['issue_date'])) {
+                $flags[] = [
+                    'type' => 'WARNING',
+                    'message' => 'Unable to detect NRI certificate issue date'
+                ];
+            }
+
+            if (!empty($nri['issuing_authority'])) {
+                $auth = strtoupper($nri['issuing_authority']);
+
+                if (
+                    strpos($auth, 'INDIA') === false ||
+                    (
+                        strpos($auth, 'EMBASSY') === false &&
+                        strpos($auth, 'CONSULATE') === false &&
+                        strpos($auth, 'HIGH COMMISSION') === false
+                    )
+                ) {
+                    $flags[] = [
+                        'type' => 'WARNING',
+                        'message' => 'NRI certificate issuing authority requires manual verification'
+                    ];
+                }
+            }
+        }
+    }
+
+    /* =========================
+       3. Employment / Seafarer
+    ========================== */
+    if (isset($allDocuments['EMPLOYMENT CERTIFICATE'])) {
+
+        $emp = $allDocuments['EMPLOYMENT CERTIFICATE'];
+
+        if (empty($emp)) {
+            $flags[] = [
+                'type' => 'WARNING',
+                'message' => 'Employment certificate uploaded but OCR extraction failed'
+            ];
+        } else {
+
+            if (!empty($emp['issue_date']) && $emp['issue_date'] < $cutoffDate) {
+                $flags[] = [
+                    'type' => 'CRITICAL',
+                    'message' => "Employment certificate issued before 1 March 2025 ({$emp['issue_date']})"
+                ];
+            }
+
+            if (
+                (!empty($emp['employment_type']) && $emp['employment_type'] === 'SEAFARER') ||
+                (!empty($emp['designation']) && stripos($emp['designation'], 'SEAFARER') !== false)
+            ) {
+                if (!isset($allDocuments['CDC'])) {
+                    $flags[] = [
+                        'type' => 'CRITICAL',
+                        'message' => 'CDC is mandatory for seafarer parent/guardian'
+                    ];
+                }
+            }
+        }
+    }
+
+    /* =========================
+       4. Parent Passport Rules
+    ========================== */
+    if (isset($allDocuments['PARENT PASSPORT'])) {
+
+        $pass = $allDocuments['PARENT PASSPORT'];
+
+        if (empty($pass)) {
+            $flags[] = [
+                'type' => 'WARNING',
+                'message' => 'Parent passport uploaded but OCR extraction failed'
+            ];
+        } else {
+
+            if (!empty($pass['nationality']) &&
+                strtoupper($pass['nationality']) !== 'INDIAN') {
+
+                $flags[] = [
+                    'type' => 'CRITICAL',
+                    'message' => "Parent passport nationality is not Indian ({$pass['nationality']})"
+                ];
+            }
+
+            if (!empty($pass['expiry_date']) &&
+                $pass['expiry_date'] !== '1970-01-01' &&
+                $pass['expiry_date'] < $today) {
+
+                $flags[] = [
+                    'type' => 'CRITICAL',
+                    'message' => "Parent passport expired on {$pass['expiry_date']}"
+                ];
+            }
+        }
+    }
+
+    /* =========================
+       5. Visa Rules
+    ========================== */
+    if (isset($allDocuments['VISA'])) {
+
+        $visa = $allDocuments['VISA'];
+
+        if (empty($visa)) {
+            $flags[] = [
+                'type' => 'WARNING',
+                'message' => 'Visa uploaded but OCR extraction failed'
+            ];
+        } else {
+
+            if (!empty($visa['expiry_date']) &&
+                $visa['expiry_date'] !== '1970-01-01' &&
+                $visa['expiry_date'] < $today) {
+
+                $flags[] = [
+                    'type' => 'CRITICAL',
+                    'message' => "Visa / residence permit expired on {$visa['expiry_date']}"
+                ];
+            }
+        }
+    }
+
+    /* =========================
+       6. Bank Statement
+    ========================== */
+    if (isset($allDocuments['NRI BANK STATEMENT'])) {
+
+        $bank = $allDocuments['NRI BANK STATEMENT'];
+
+        if (empty($bank)) {
+            $flags[] = [
+                'type' => 'WARNING',
+                'message' => 'Bank statement uploaded but OCR extraction failed'
+            ];
+        } else {
+
+            if (!empty($bank['account_type']) &&
+                stripos($bank['account_type'], 'NRE') === false) {
+
+                $flags[] = [
+                    'type' => 'WARNING',
+                    'message' => 'Bank account does not appear to be an NRE account'
+                ];
+            }
+        }
+    }
+
+    return $flags;
+} 
+?>-->
+
+//marksheet extractor
+
+<?php
+
+class MarksheetExtractor
+{
+    public static function extract(string $text): array
+    {
+        $fields = [];
+        $text = strtoupper($text);
+
+        /* =========================
+           BOARD / EXAM IDENTIFICATION
+        ========================== */
+        if (preg_match('/CENTRAL BOARD OF SECONDARY EDUCATION|CBSE/', $text)) {
+            $fields['board'] = 'CBSE';
+        } elseif (preg_match('/STATE BOARD|SECONDARY EDUCATION/', $text)) {
+            $fields['board'] = 'STATE BOARD';
+        }
+
+        /* =========================
+           RESULT (PASS / FAIL)
+        ========================== */
+        if (preg_match('/\b(FAIL|FAILED)\b/', $text)) {
+            $fields['result'] = 'FAIL';
+        } elseif (preg_match('/\b(PASS|PASSED|QUALIFIED)\b/', $text)) {
+            $fields['result'] = 'PASS';
+        }
+
+        /* =========================
+           YEAR
+        ========================== */
+        if (preg_match('/\b(20\d{2})\b/', $text, $m)) {
+            $fields['year'] = $m[1];
+        }
+
+        /* =========================
+           CANDIDATE NAME (SAFE)
+           Extract ONLY with strong anchors
+        ========================== */
+        if (preg_match(
+            '/(NAME OF THE CANDIDATE|CANDIDATE NAME|STUDENT NAME)\s*[:\-]?\s*([A-Z][A-Z\s\.]{4,40})/',
+            $text,
+            $m
+        )) {
+            $name = trim($m[2]);
+
+            // Extra safety: avoid parent names
+            if (
+                stripos($name, 'FATHER') === false &&
+                stripos($name, 'MOTHER') === false
+            ) {
+                $fields['student_name'] = preg_replace('/\s+/', ' ', $name);
+            }
+        }
+
+        /* =========================
+           PCM MARKS (BEST EFFORT)
+        ========================== */
+        $pcm = [];
+
+        $subjects = [
+            'PHYSICS'     => 'physics',
+            'CHEMISTRY'   => 'chemistry',
+            'MATHEMATICS' => 'mathematics',
+            'MATHS'       => 'mathematics'
+        ];
+
+        foreach ($subjects as $label => $key) {
+            if (preg_match(
+                '/' . $label . '[^\d]{0,20}(\d{2,3})/',
+                $text,
+                $m
+            )) {
+                $pcm[$key] = (int)$m[1];
+            }
+        }
+
+        if (count($pcm) >= 2) {
+            $fields['pcm_marks'] = $pcm;
+
+            if (count($pcm) === 3) {
+                $total = array_sum($pcm);
+                $fields['pcm_total'] = $total;
+                $fields['pcm_percentage'] = round(($total / 300) * 100, 2);
+            }
+        }
+
+        return $fields;
+    }
+}
+
+run_ocr.php
+
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+session_start();
+require_once __DIR__ . '/../auth/check_login.php';
+require_once __DIR__ . '/../config/db.php';
+
+/* =========================
+   LOAD EXTRACTORS
+========================= */
+require_once __DIR__ . '/extractors/PassportExtractor.php';
+require_once __DIR__ . '/extractors/MarksheetExtractor.php';
+require_once __DIR__ . '/extractors/CandidateIdentityExtractor.php';
+require_once __DIR__ . '/extractors/VisaExtractor.php';
+require_once __DIR__ . '/extractors/NriCertificateExtractor.php';
+require_once __DIR__ . '/extractors/EmploymentCertificateExtractor.php';
+require_once __DIR__ . '/extractors/BankStatementExtractor.php';
+
+/* =========================
+   LOGGER
+========================= */
+function writeLog(string $message): void
+{
+    $logFile = __DIR__ . '/../logs/system.log';
+    $timestamp = date('Y-m-d H:i:s');
+    file_put_contents($logFile, "[$timestamp] $message\n", FILE_APPEND);
+}
+
+/* =========================
+   DOCUMENT TYPE DETECTION
+========================= */
+function detectDocumentType(string $text): string
+{
+    $text = strtoupper($text);
+
+    if (preg_match('/BIRTH\s*CERTIFICATE/', $text)) return 'BIRTH CERTIFICATE';
+    if (preg_match('/P<[A-Z]{3}|PASSPORT/', $text)) return 'PASSPORT';
+    if (preg_match('/VISA|RESIDENCE\s*PERMIT/', $text)) return 'VISA';
+    if (preg_match('/EMBASSY|CONSULATE/', $text)) return 'NRI CERTIFICATE';
+    if (preg_match('/TO\s+WHOMSOEVER\s+IT\s+MAY\s+CONCERN|THIS\s+IS\s+TO\s+(CERTIFY|CONFIRM)|EMPLOYED\s+WITH|WORKING\s+WITH|EMPLOYMENT\s+CERTIFICATE|COMPANY\s+LETTERHEAD/i',
+    $text)) {return 'EMPLOYMENT CERTIFICATE';}
+
+    if (preg_match('/NRE|NRO|ACCOUNT\s*STATEMENT/', $text)) return 'BANK STATEMENT';
+    if (preg_match('/MARK\s*SHEET|MARKSHEET|BOARD/', $text)) return 'MARKSHEET';
+
+    return 'UNKNOWN';
+}
+
+/* =========================
+   INPUT VALIDATION
+========================= */
+if (!isset($_GET['document_id'])) {
+    die("Document ID missing");
+}
+
+$document_id = (int) $_GET['document_id'];
+
+/* =========================
+   FETCH DOCUMENT
+========================= */
+$stmt = $conn->prepare("
+    SELECT document_id, document_type, file_path, reg_seq
+    FROM uploaded_documents
+    WHERE document_id = :id
+");
+$stmt->execute(['id' => $document_id]);
+$document = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$document) {
+    die("Document not found");
+}
+
+$reg_seq = $document['reg_seq'];
+
+/* =========================
+   PREVENT DUPLICATE OCR
+========================= */
+$check = $conn->prepare("
+    SELECT 1 FROM ocr_extracted_data WHERE document_id = :id
+");
+$check->execute(['id' => $document_id]);
+
+if ($check->fetch()) {
+    writeLog("OCR SKIPPED (DUPLICATE) | Doc ID: $document_id");
+    die("OCR already completed");
+}
+
+/* =========================
+   FILE RESOLUTION
+========================= */
+$filePath = __DIR__ . '/../' . $document['file_path'];
+$filePath = str_replace('\\', '/', $filePath);
+
+if (!file_exists($filePath)) {
+    writeLog("FILE NOT FOUND | Doc ID: $document_id");
+    die("File not found");
+}
+
+/* =========================
+   PDF → IMAGE
+========================= */
+$ocrInput = $filePath;
+$tempImage = null;
+
+if (strtolower(pathinfo($filePath, PATHINFO_EXTENSION)) === 'pdf') {
+    $tempImage = sys_get_temp_dir() . "/ocr_$document_id.png";
+    shell_exec('magick "' . $filePath . '[0]" "' . $tempImage . '"');
+
+    if (!file_exists($tempImage)) {
+        writeLog("PDF CONVERSION FAILED | Doc ID: $document_id");
+        $conn->prepare("UPDATE uploaded_documents SET ocr_status='OCR_FAILED' WHERE document_id=:id")
+             ->execute(['id'=>$document_id]);
+        die("PDF conversion failed");
+    }
+    $ocrInput = $tempImage;
+}
+
+/* =========================
+   OCR EXECUTION
+========================= */
+$tesseract = 'C:/Program Files/Tesseract-OCR/tesseract.exe';
+$tessdata  = 'C:/Program Files/Tesseract-OCR/tessdata';
+
+$rawText = shell_exec(
+    "\"$tesseract\" \"$ocrInput\" stdout --tessdata-dir \"$tessdata\" -l eng --psm 6 2>&1"
+);
+
+if (!$rawText || trim($rawText) === '') {
+    writeLog("OCR FAILED EMPTY | Doc ID: $document_id");
+    $conn->prepare("UPDATE uploaded_documents SET ocr_status='OCR_FAILED' WHERE document_id=:id")
+         ->execute(['id'=>$document_id]);
+    die("OCR failed");
+}
+
+$cleanText = strtoupper(str_replace("\r", "", $rawText));
+
+/* =========================
+   HANDWRITTEN DETECTION (STOP HERE)
+========================= */
+$alphaCount = preg_match_all('/[A-Z]/', $cleanText);
+
+if ($alphaCount < 50) {
+
+    writeLog("HANDWRITTEN DOC | Doc ID: $document_id");
+
+    $fields = [
+        'handwritten' => true,
+        'note' => 'Handwritten document – manual verification required'
+    ];
+
+    $conn->prepare("
+        INSERT INTO ocr_extracted_data
+        (document_id, extracted_text, extracted_fields, confidence_score)
+        VALUES (:id,:text,:fields,30)
+    ")->execute([
+        'id'=>$document_id,
+        'text'=>$rawText,
+        'fields'=>json_encode($fields)
+    ]);
+
+    $conn->prepare("
+        UPDATE uploaded_documents SET ocr_status='OCR_COMPLETED'
+        WHERE document_id=:id
+    ")->execute(['id'=>$document_id]);
+
+    header("Location: ../verification/review.php?document_id=$document_id&reg_seq=$reg_seq");
+    exit;
+}
+
+/* =========================
+   DOCUMENT TYPE DETECTION
+========================= */
+$detectedType = detectDocumentType($cleanText);
+
+/* =========================
+   EXTRACTION
+========================= */
+$fields = [];
+
+switch ($detectedType) {
+    case 'BIRTH CERTIFICATE':
+        $fields = CandidateIdentityExtractor::extract($cleanText);
+        break;
+    case 'PASSPORT':
+        $fields = PassportExtractor::extract($cleanText);
+        break;
+    case 'VISA':
+        $fields = VisaExtractor::extract($cleanText);
+        break;
+    case 'NRI CERTIFICATE':
+        $fields = NriCertificateExtractor::extract($cleanText);
+        break;
+    case 'EMPLOYMENT CERTIFICATE':
+        $fields = EmploymentCertificateExtractor::extract($cleanText);
+        break;
+    case 'BANK STATEMENT':
+        $fields = BankStatementExtractor::extract($cleanText);
+        break;
+    case 'MARKSHEET':
+        $fields = MarksheetExtractor::extract($cleanText);
+        break;
+    default:
+        $fields = ['note' => 'Document detected but no extractor matched'];
+}
+
+/* =========================
+   CONFIDENCE
+========================= */
+$confidence = count($fields) >= 3 ? 85 : 60;
+
+/* =========================
+   STORE RESULT
+========================= */
+$conn->prepare("
+    INSERT INTO ocr_extracted_data
+    (document_id, extracted_text, extracted_fields, confidence_score)
+    VALUES (:id,:text,:fields,:score)
+")->execute([
+    'id'=>$document_id,
+    'text'=>$rawText,
+    'fields'=>json_encode($fields),
+    'score'=>$confidence
+]);
+
+$conn->prepare("
+    UPDATE uploaded_documents SET ocr_status='OCR_COMPLETED'
+    WHERE document_id=:id
+")->execute(['id'=>$document_id]);
+
+/* =========================
+   CLEANUP
+========================= */
+if ($tempImage && file_exists($tempImage)) unlink($tempImage);
+
+/* =========================
+   REDIRECT
+========================= */
+header("Location: ../verification/review.php?document_id=$document_id&reg_seq=$reg_seq");
+exit;
+
+
+
+//review.php
+
+<?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+
+session_start();
+require_once __DIR__ . '/../auth/check_login.php';
+require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../rules/nri_rules.php';
+require_once __DIR__ . '/../rules/academic_rules.php';
+
+if (!isset($_GET['reg_seq'])) {
+    die("Invalid navigation: missing reg_seq");
+}
+
+$reg_seq = (int) $_GET['reg_seq'];
+
+// Fetch applicant category
+$stmt = $conn->prepare("SELECT app_name, cat_applied FROM registration WHERE reg_seq = :seq");
+$stmt->execute(['seq' => $reg_seq]);
+$applicant = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$applicant) {
+    die("Applicant not found");
+}
+
+// Fetch ALL documents for this applicant with OCR data
+$stmt = $conn->prepare("
+    SELECT 
+        d.document_id,
+        d.document_type,
+        d.file_path,
+        o.extracted_fields
+    FROM uploaded_documents d
+    LEFT JOIN ocr_extracted_data o ON o.document_id = d.document_id
+    WHERE d.reg_seq = :seq
+    ORDER BY d.document_type
+");
+$stmt->execute(['seq' => $reg_seq]);
+$allDocs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Group OCR data by document type for rule engine
+$allDocuments = [];
+foreach ($allDocs as $d) {
+    if (!empty($d['extracted_fields'])) {
+        $fields = json_decode($d['extracted_fields'], true) ?? [];
+        $allDocuments[$d['document_type']] = $fields;
+    }
+}
+
+// Run category-specific rules on ALL documents
+$flags = [];
+if ($applicant['cat_applied'] === 'NRI') {
+    $flags = runNriRules($allDocuments);
+}
+$academicFlags = runAcademicRules($allDocuments);
+$allFlags = array_merge($flags, $academicFlags);
+?>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Application Verification</title>
+    <link rel="stylesheet" href="/ug_doc_verification/assets/css/style.css">
+    <style>
+        .header-section {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+        }
+        .flags-section {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+        }
+        .flags-section.success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .flag-item {
+            padding: 10px;
+            margin: 8px 0;
+            border-radius: 3px;
+            background: white;
+            border-left: 3px solid #6c757d;
+        }
+        .flag-critical {
+            border-left-color: #dc3545;
+            color: #721c24;
+        }
+        .flag-warning {
+            border-left-color: #ffc107;
+            color: #856404;
+        }
+        .documents-section {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .doc-card {
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .doc-card h3 {
+            margin-top: 0;
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .doc-preview {
+            max-width: 100%;
+            max-height: 300px;
+            border: 1px solid #ddd;
+            margin: 10px 0;
+        }
+        .ocr-data {
+            background: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow: auto;
+            font-size: 12px;
+        }
+        .decision-form {
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            margin-top: 20px;
+            border: 2px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+
+<div class="header-section">
+    <h2>Application Verification</h2>
+    <p><strong>Applicant:</strong> <?= htmlspecialchars($applicant['app_name']) ?></p>
+    <p><strong>Category:</strong> <?= htmlspecialchars($applicant['cat_applied']) ?></p>
+    <p><strong>Application ID:</strong> <?= $reg_seq ?></p>
+</div>
+
+<!-- VALIDATION FLAGS -->
+<div class="flags-section <?= empty($allFlags) ? 'success' : '' ?>">
+    <h3>📋 Validation Report</h3>
+    
+    <?php if (empty($allFlags)): ?>
+        <p style="color: #155724; font-weight: bold;">✓ All validation checks passed</p>
+    <?php else: ?>
+        <?php foreach ($allFlags as $flag): ?>
+            <div class="flag-item flag-<?= strtolower($flag['type']) ?>">
+                <?= $flag['type'] === 'CRITICAL' ? '🔴' : '⚠️' ?>
+                <?= htmlspecialchars($flag['message']) ?>
+            </div>
+        <?php endforeach; ?>
+    <?php endif; ?>
+</div>
+
+<!-- ALL DOCUMENTS -->
+<h3>📄 Uploaded Documents</h3>
+<div class="documents-section">
+    <?php foreach ($allDocs as $doc): ?>
+        <div class="doc-card">
+            <h3><?= htmlspecialchars($doc['document_type']) ?></h3>
+            
+            <!-- Document Preview -->
+            <?php if (preg_match('/\.pdf$/i', $doc['file_path'])): ?>
+                <iframe src="/ug_doc_verification/<?= htmlspecialchars($doc['file_path']) ?>" 
+                        width="100%" height="300" style="border: 1px solid #ddd;"></iframe>
+            <?php else: ?>
+                <img src="/ug_doc_verification/<?= htmlspecialchars($doc['file_path']) ?>" 
+                     class="doc-preview" alt="<?= htmlspecialchars($doc['document_type']) ?>">
+            <?php endif; ?>
+            
+            <!-- OCR Data -->
+            <?php if (!empty($doc['extracted_fields'])): ?>
+                <details>
+                    <summary style="cursor: pointer; color: #007bff; font-weight: bold; margin: 10px 0;">View OCR Data</summary>
+                    <div class="ocr-data">
+                        <pre><?= htmlspecialchars(json_encode(json_decode($doc['extracted_fields'], true), JSON_PRETTY_PRINT)) ?></pre>
+                    </div>
+                </details>
+            <?php else: ?>
+                <p style="color: #dc3545;">⚠️ OCR data not available</p>
+            <?php endif; ?>
+        </div>
+    <?php endforeach; ?>
+</div>
+
+<!-- STAFF DECISION -->
+<div class="decision-form">
+    <h3>Staff Decision</h3>
+    
+    <form method="post" action="submit_decision.php">
+        <input type="hidden" name="reg_seq" value="<?= $reg_seq ?>">
+        
+        <label>
+            <input type="radio" name="decision" value="APPROVED" required>
+            <strong>Approve Application</strong>
+        </label><br><br>
+        
+        <label>
+            <input type="radio" name="decision" value="REJECTED">
+            <strong>Reject Application</strong>
+        </label><br><br>
+        
+        <label><strong>Staff Remarks:</strong></label><br>
+        <textarea name="remarks" rows="4" style="width: 100%; max-width: 600px;" 
+                  placeholder="Enter remarks (required if rejecting)"></textarea><br><br>
+        
+        <button type="submit" class="btn btn-primary" style="font-size: 16px; padding: 10px 20px;">
+            Submit Decision
+        </button>
+        <a href="../documents/list.php?reg_seq=<?= $reg_seq ?>" class="btn btn-secondary">Back to Documents</a>
+    </form>
+</div>
+
+</body>
+</html>
+
