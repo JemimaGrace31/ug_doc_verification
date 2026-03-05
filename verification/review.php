@@ -444,19 +444,11 @@ if ($selectedDocId) {
         <?php if ($applicant['verification_status'] === 'VERIFIED'): ?>
             <p style="color: green; font-weight: bold;">✓ This application has been marked as VERIFIED</p>
         <?php else: ?>
-            <form method="post" action="submit_decision.php" style="display: inline-block; margin-right: 10px;">
-                <input type="hidden" name="reg_seq" value="<?= $reg_seq ?>">
-                <input type="hidden" name="action" value="mark_in_progress">
-
-                <button type="submit" class="btn btn-warning"
-                        style="font-size: 16px; padding: 12px 30px; background: #ffc107; border: none; color: #000; border-radius: 5px; cursor: pointer;">
-                    ⏳ Mark as In Progress
-                </button>
-            </form>
-
-            <form method="post" action="submit_decision.php" style="display: inline-block;">
+            <form method="post" action="submit_decision.php">
                 <input type="hidden" name="reg_seq" value="<?= $reg_seq ?>">
                 <input type="hidden" name="action" value="mark_verified">
+
+                <p>After reviewing all documents, OCR data, and validation flags:</p>
 
                 <button type="submit" class="btn btn-success"
                         style="font-size: 16px; padding: 12px 30px; background: #007bff; border: none; color: white; border-radius: 5px; cursor: pointer;">
