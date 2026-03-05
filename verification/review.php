@@ -171,11 +171,13 @@ if ($selectedDocId) {
         }
 
         .main-layout {
-            display: flex;
+            display: grid;
+            grid-template-columns: 220px 420px 1fr;
             gap: 20px;
             margin-bottom: 30px;
         }
-
+        
+        
         .left-sidebar {
             width: 250px;
             flex-shrink: 0;
@@ -263,7 +265,8 @@ if ($selectedDocId) {
             border-radius: 5px;
             max-height: 500px;
             overflow: auto;
-            font-size: 12px;
+            font-size: 13px;
+             line-height:1.4;
         }
 
         .flags-section {
@@ -327,10 +330,10 @@ if ($selectedDocId) {
     </div>
 </div>
 
-<!--MAIN LAYOUT: SIDEBAR + CONTENT -->
+<!-- MAIN LAYOUT -->
 <div class="main-layout">
 
-    <!-- LEFT SIDEBAR: DOCUMENT LIST -->
+    <!-- LEFT: DOCUMENT LIST -->
     <div class="left-sidebar">
         <div class="doc-list">
             <h3>📄 Documents</h3>
@@ -343,66 +346,79 @@ if ($selectedDocId) {
         </div>
     </div>
 
-    <!-- RIGHT CONTENT: DOCUMENT VIEWER + OCR -->
-    <div class="right-content">
+    <!-- MIDDLE: OCR + VALIDATION -->
+    <div class="middle-panel">
+
+        <!-- OCR DATA -->
+        <div class="ocr-section">
+            <h4>📝 OCR Extracted Data</h4>
+
+            <?php
+            $ocr = json_decode($selectedDoc['extracted_fields'] ?? '{}', true) ?? [];
+            ?>
+
+            <?php if (!empty($ocr)): ?>
+                <pre><?= htmlspecialchars(json_encode($ocr, JSON_PRETTY_PRINT)) ?></pre>
+            <?php else: ?>
+                <p style="color:#dc3545;">⚠️ OCR data not available</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- VALIDATION REPORT -->
+        <div class="flags-section">
+            <h4>Validation Report</h4>
+
+            <?php if (empty($allFlags)): ?>
+                <p style="color:green;font-weight:bold;">✓ All validation checks passed</p>
+            <?php else: ?>
+                <?php foreach ($allFlags as $flag): ?>
+                    <div class="flag-item flag-<?= strtolower($flag['type']) ?>">
+                        <?= $flag['type'] === 'CRITICAL' ? '🔴' : '⚠️' ?>
+                        <?= htmlspecialchars($flag['message']) ?>
+                    </div>
+                <?php endforeach; ?>
+            <?php endif; ?>
+
+        </div>
+
+    </div>
+
+    <!-- RIGHT: DOCUMENT VIEWER -->
+    <div class="right-viewer">
+
         <?php if ($selectedDoc): ?>
+
             <div class="viewer-box">
                 <h4><?= htmlspecialchars($selectedDoc['document_type']) ?></h4>
 
-                <div class="doc-ocr-container">
-                    <!-- Document Preview -->
-                    <div class="doc-preview">
-                        <?php if (preg_match('/\.pdf$/i', $selectedDoc['file_path'])): ?>
-                            <iframe src="/ug_doc_verification/<?= htmlspecialchars($selectedDoc['file_path']) ?>"
-                                    width="500" height="500" style="border: 1px solid #ddd;"></iframe>
-                        <?php else: ?>
-                            <img src="/ug_doc_verification/<?= htmlspecialchars($selectedDoc['file_path']) ?>"
-                                 style="max-width:500px; max-height:500px; border: 1px solid #ddd; border-radius: 5px;">
-                        <?php endif; ?>
-                    </div>
+                <?php if (preg_match('/\.pdf$/i', $selectedDoc['file_path'])): ?>
 
-                    <!-- OCR Data -->
-                    <div class="ocr-section">
-                        <h5>📝 OCR Extracted Data</h5>
-                        <?php
-                        $ocr = json_decode($selectedDoc['extracted_fields'] ?? '{}', true) ?? [];
-                        ?>
-                        <?php if (!empty($ocr)): ?>
-                            <pre><?= htmlspecialchars(json_encode($ocr, JSON_PRETTY_PRINT)) ?></pre>
-                        <?php else: ?>
-                            <p style="color:#dc3545;">⚠️ OCR data not available</p>
-                        <?php endif; ?>
-                    </div>
-                </div>
+                    <iframe src="/ug_doc_verification/<?= htmlspecialchars($selectedDoc['file_path']) ?>"
+                            style="width:100%;height:700px;border:1px solid #ddd;">
+                    </iframe>
+
+                <?php else: ?>
+
+                    <img src="/ug_doc_verification/<?= htmlspecialchars($selectedDoc['file_path']) ?>"
+                         style="width:100%;max-height:700px;border:1px solid #ddd;border-radius:5px;">
+
+                <?php endif; ?>
+
             </div>
+
         <?php else: ?>
+
             <div class="viewer-box">
-                <p style="text-align: center; color: #6c757d; padding: 50px;">
-                    <== Select a document from the list to view
+                <p style="text-align:center;color:#6c757d;padding:50px;">
+                    ← Select a document from the list
                 </p>
             </div>
+
         <?php endif; ?>
+
     </div>
 
 </div>
-
-
-<!--VALIDATION REPORT -->
-<div class="flags-section">
-    <h3> Validation Report</h3>
-
-    <?php if (empty($allFlags)): ?>
-        <p style="color:green; font-weight:bold;">✓ All validation checks passed</p>
-    <?php else: ?>
-        <?php foreach ($allFlags as $flag): ?>
-            <div class="flag-item flag-<?= strtolower($flag['type']) ?>">
-                <?= $flag['type'] === 'CRITICAL' ? '🔴' : '⚠️' ?>
-                <?= htmlspecialchars($flag['message']) ?>
-            </div>
-        <?php endforeach; ?>
-    <?php endif; ?>
-</div>
-
 <!-- STAFF ACTION -->
 <div class="decision-form">
     <?php if ($userRole === 'ADMIN'): ?>

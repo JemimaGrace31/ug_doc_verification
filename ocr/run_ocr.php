@@ -269,5 +269,14 @@ $conn->prepare("
     'score'=>$confidence
 ]);
 
+/* UPDATE OCR STATUS */
+$conn->prepare("
+    UPDATE uploaded_documents
+    SET ocr_status = 'OCR_COMPLETED'
+    WHERE document_id = :id
+")->execute([
+    'id' => $document_id
+]);
+
 header("Location: ../verification/review.php?document_id=$document_id&reg_seq=$reg_seq");
 exit;

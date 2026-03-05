@@ -196,3 +196,38 @@ input:focus {
     border-color: #1f2a44;
 }
 
+.middle-panel{
+    width:350px;
+    display:flex;
+    flex-direction:column;
+    gap:15px;
+}
+
+.right-viewer{
+    flex:1;
+}
+
+.ocr-section{
+    background:#f8f9fa;
+    padding:12px;
+    border-radius:6px;
+    border:1px solid #ddd;
+}
+
+.ocr-section pre{
+    font-size:12px;
+    background:white;
+    padding:10px;
+    max-height:250px;
+    overflow:auto;
+}
+
+.flags-section{
+    background:#f8f9fa;
+    padding:12px;
+    border-radius:6px;
+    border:1px solid #ddd;
+    max-height:250px;
+    overflow:auto;
+}
+
