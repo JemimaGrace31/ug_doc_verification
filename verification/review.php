@@ -134,6 +134,42 @@ if ((int)$applicant['cat_applied'] === 103 || (int)$applicant['cat_applied'] ===
 $academicFlags = runAcademicRules($allDocuments);
 $allFlags = array_merge($flags, $academicFlags);
 
+/* STORE FLAGS IN DATABASE */
+
+foreach ($allFlags as $flag) {
+
+    $severity = ($flag['type'] === 'CRITICAL') ? 'HIGH' : 'MEDIUM';
+
+    $stmt = $conn->prepare("
+        INSERT INTO verification_flags (reg_seq, flag_type, severity, description)
+        SELECT :seq, 'RULE_ENGINE', :severity, :desc
+        WHERE NOT EXISTS (
+            SELECT 1 FROM verification_flags
+            WHERE reg_seq = :seq
+            AND description = :desc
+        )
+    ");
+
+    $stmt->execute([
+        'seq' => $reg_seq,
+        'severity' => $severity,
+        'desc' => $flag['message']
+    ]);
+}
+
+/* FETCH FLAGS FROM DATABASE */
+$stmt = $conn->prepare("
+SELECT *
+FROM verification_flags
+WHERE reg_seq = :seq
+AND verifier_status != 'RESOLVED'
+ORDER BY severity DESC
+");
+
+$stmt->execute(['seq'=>$reg_seq]);
+$dbFlags = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+
 //FETCH SELECTED DOCUMENT
 
 $selectedDoc = null;
@@ -367,17 +403,44 @@ if ($selectedDocId) {
         <!-- VALIDATION REPORT -->
         <div class="flags-section">
             <h4>Validation Report</h4>
+            
+<?php if (empty($dbFlags)): ?>
+    <p style="color:green;font-weight:bold;">✓ All validation checks passed</p>
+<?php else: ?>
 
-            <?php if (empty($allFlags)): ?>
-                <p style="color:green;font-weight:bold;">✓ All validation checks passed</p>
-            <?php else: ?>
-                <?php foreach ($allFlags as $flag): ?>
-                    <div class="flag-item flag-<?= strtolower($flag['type']) ?>">
-                        <?= $flag['type'] === 'CRITICAL' ? '🔴' : '⚠️' ?>
-                        <?= htmlspecialchars($flag['message']) ?>
-                    </div>
-                <?php endforeach; ?>
-            <?php endif; ?>
+<?php foreach ($dbFlags as $flag): ?>
+
+<div class="flag-item">
+
+<strong>
+<?= $flag['severity'] === 'HIGH' ? '🔴' : '⚠️' ?>
+<?= htmlspecialchars($flag['description']) ?>
+</strong>
+
+<form method="post" action="update_flag.php" style="margin-top:6px;">
+
+<input type="hidden" name="flag_id" value="<?= $flag['flag_id'] ?>">
+
+<select name="status">
+<option value="OPEN">Open</option>
+<option value="RESOLVED">Resolved</option>
+<option value="IGNORED">Ignored</option>
+</select>
+
+<input type="text"
+name="remark"
+placeholder="Verifier remark"
+style="width:200px">
+
+<button type="submit">Update</button>
+
+</form>
+
+</div>
+
+<?php endforeach; ?>
+
+<?php endif; ?>
 
         </div>
 
