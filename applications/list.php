@@ -2,6 +2,7 @@
 session_start();
 require_once __DIR__ . '/../auth/check_login.php';
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/db.php';
 
 // Get current user role and ID 
 $userRole = $_SESSION['role'] ?? 'VERIFIER';

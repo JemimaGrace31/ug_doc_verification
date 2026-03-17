@@ -1,8 +1,8 @@
 <?php
 $host = "localhost";
 $port = "5432";
-$dbname = "os2025j";
-$user = "os2025j";
+$dbname = "os2025";
+$user = "os2025";
 $password = "MANGO123";
 
 try {
@@ -12,6 +12,7 @@ try {
         $password
     );
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+     echo "Connected successfully!";
 } catch (PDOException $e) {
     die("Database connection failed: " . $e->getMessage());
 }
