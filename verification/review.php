@@ -5,6 +5,7 @@ ini_set('display_errors', 1);
 session_start();
 require_once __DIR__ . '/../auth/check_login.php';
 require_once __DIR__ . '/../config/db.php';
+require_once __DIR__ . '/../config/db_os.php';
 require_once __DIR__ . '/../rules/nri_rules.php';
 require_once __DIR__ . '/../rules/ciwgc_rules.php';
 require_once __DIR__ . '/../rules/foreign_rules.php';
@@ -37,6 +38,14 @@ $applicant = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$applicant) {
     die("Applicant not found");
 }
+$category = (int)$applicant['cat_applied'];
+
+if ($category === 106) {   // OS category
+    $db = $osConn;
+} else {
+    $db = $conn;
+}
+
 
 //ACCESS CONTROL: Verifiers can only see their assigned categories
 
@@ -54,7 +63,7 @@ if ($userRole !== 'ADMIN') {
 
 //FETCH ALL DOCUMENTS
 
-$stmt = $conn->prepare("
+$stmt = $db->prepare("
     SELECT 
         d.document_id,
         d.document_type,
@@ -140,7 +149,7 @@ foreach ($allFlags as $flag) {
 
     $severity = ($flag['type'] === 'CRITICAL') ? 'HIGH' : 'MEDIUM';
 
-    $stmt = $conn->prepare("
+    $stmt = $db->prepare("
         INSERT INTO verification_flags (reg_seq, flag_type, severity, description)
         SELECT :seq, 'RULE_ENGINE', :severity, :desc
         WHERE NOT EXISTS (
@@ -158,7 +167,7 @@ foreach ($allFlags as $flag) {
 }
 
 /* FETCH FLAGS FROM DATABASE */
-$stmt = $conn->prepare("
+$stmt = $db->prepare("
 SELECT *
 FROM verification_flags
 WHERE reg_seq = :seq
@@ -175,7 +184,7 @@ $dbFlags = $stmt->fetchAll(PDO::FETCH_ASSOC);
 $selectedDoc = null;
 
 if ($selectedDocId) {
-    $stmt = $conn->prepare("
+    $stmt = $db->prepare("
         SELECT d.document_type, d.file_path, o.extracted_fields
         FROM uploaded_documents d
         LEFT JOIN ocr_extracted_data o 
@@ -193,155 +202,159 @@ if ($selectedDocId) {
     <title>Application Verification</title>
     <link rel="stylesheet" href="/ug_doc_verification/assets/css/style.css">
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 0;
-            padding: 20px;
+        body{
+            font-family: Arial, sans-serif;
+            margin:0;
+            padding:20px;
+            background:#f4f6fb;
         }
 
-        .header-section {
-            background: #f8f9fa;
-            padding: 15px;
-            margin-bottom: 20px;
-            border-radius: 8px;
+        /* Header */
+        .header-section{
+            background:white;
+            padding:20px;
+            border-radius:10px;
+            margin-bottom:20px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
         }
 
-        .main-layout {
-            display: grid;
-            grid-template-columns: 220px 420px 1fr;
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-        
-        
-        .left-sidebar {
-            width: 250px;
-            flex-shrink: 0;
+        /* Main layout */
+        .main-layout{
+            display:grid;
+            grid-template-columns:240px 450px 1fr;
+            gap:20px;
+            margin-bottom:30px;
         }
 
-        .right-content {
-            flex: 1;
+        /* Document sidebar */
+        .left-sidebar{
+            position:sticky;
+            top:20px;
         }
 
-        .doc-list {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 10px;
+        .doc-list{
+            background:white;
+            border-radius:10px;
+            padding:15px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
         }
 
-        .doc-list h3 {
-            margin-top: 0;
-            font-size: 16px;
-            color: #333;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 8px;
+        .doc-list h3{
+            margin-top:0;
+            margin-bottom:12px;
         }
 
-        .doc-list a {
-            display: block;
-            padding: 10px;
-            margin-bottom: 5px;
-            text-decoration: none;
-            color: #007bff;
-            border-radius: 4px;
-            transition: all 0.2s;
+        .doc-list a{
+            display:block;
+            padding:10px;
+            margin-bottom:6px;
+            text-decoration:none;
+            border-radius:6px;
+            color:#333;
+            font-size:14px;
         }
 
-        .doc-list a:hover {
-            background: #e7f3ff;
+        .doc-list a:hover{
+            background:#eef3ff;
         }
 
-        .doc-list a.active {
-            background: #007bff;
-            color: white;
-            font-weight: bold;
+        .doc-list a.active{
+            background:#007bff;
+            color:white;
         }
 
-        .viewer-box {
-            background: #fff;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 20px;
-            min-height: 400px;
+        /* OCR panel */
+        .middle-panel{
+            display:flex;
+            flex-direction:column;
+            gap:20px;
         }
 
-        .viewer-box h4 {
-            margin-top: 0;
-            color: #333;
-            border-bottom: 2px solid #007bff;
-            padding-bottom: 10px;
+        .ocr-section{
+            background:white;
+            border-radius:10px;
+            padding:15px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
         }
 
-        .doc-ocr-container {
-            display: flex;
-            gap: 20px;
-            margin-top: 15px;
+        .ocr-section h4{
+            margin-top:0;
         }
 
-        .doc-preview {
-            flex-shrink: 0;
+        .ocr-section pre{
+            background:#1e1e1e;
+            color:#00ff9d;
+            padding:12px;
+            border-radius:6px;
+            font-size:12px;
+            max-height:350px;
+            overflow:auto;
         }
 
-        .ocr-section {
-            flex: 1;
-            padding: 15px;
-            background: #f8f9fa;
-            border-radius: 5px;
+        /* Validation flags */
+        .flags-section{
+            background:white;
+            border-radius:10px;
+            padding:15px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
         }
 
-        .ocr-section h5 {
-            margin-top: 0;
-            color: #555;
+        .flag-item{
+            padding:10px;
+            margin:8px 0;
+            border-radius:6px;
+            background:#f8f9fa;
         }
 
-        .ocr-section pre {
-            background: white;
-            padding: 15px;
-            border-radius: 5px;
-            max-height: 500px;
-            overflow: auto;
-            font-size: 13px;
-             line-height:1.4;
+        /* Document viewer */
+        .viewer-box{
+            background:white;
+            border-radius:10px;
+            padding:15px;
+            box-shadow:0 2px 10px rgba(0,0,0,0.08);
         }
 
-        .flags-section {
-            background: #f8f9fa;
-            padding: 15px;
-            margin-top: 20px;
-            border-radius: 8px;
-            border: 1px solid #ddd;
+        .viewer-box h4{
+            margin-top:0;
         }
 
-        .flags-section.success {
-            background: #d4edda;
-            border-color: #c3e6cb;
+        .viewer-box iframe{
+            width:100%;
+            height:780px;
+            border:none;
         }
 
-        .flag-item {
-            padding: 10px;
-            margin: 8px 0;
-            background: white;
-            border-radius: 3px;
-            border-left: 3px solid #6c757d;
+        .viewer-box img{
+            width:100%;
+            max-height:780px;
+            object-fit:contain;
         }
 
-        .flag-critical {
-            border-left-color: #dc3545;
-            color: #721c24;
+        /* Decision panel */
+        .decision-form{
+            background:white;
+            border-radius:10px;
+            padding:20px;
+            border-left:5px solid #007bff;
+            box-shadow:0 2px 12px rgba(0,0,0,0.08);
         }
 
-        .flag-warning {
-            border-left-color: #ffc107;
-            color: #856404;
+        .decision-form h3{
+            margin-top:0;
         }
 
-        .decision-form {
-            background: #fff;
-            padding: 20px;
-            border-radius: 8px;
-            margin-top: 20px;
-            border: 2px solid #007bff;
+        .decision-form button{
+            background:#007bff;
+            color:white;
+            padding:10px 25px;
+            border:none;
+            border-radius:6px;
+            font-size:15px;
+            cursor:pointer;
+        }
+
+        .decision-form button:hover{
+            background:#0056b3;
         }
     </style>
 </head>

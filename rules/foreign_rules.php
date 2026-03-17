@@ -26,7 +26,10 @@ function runForeignRules(array $allDocuments): array
         ];
     }
 
-    if (empty($allDocuments['SCHOOL TC'])) {
+    if (
+        ( !isset($allDocuments['SCHOOL TC']) || empty($allDocuments['SCHOOL TC']) ) &&
+        ( !isset($allDocuments['MIGRATION CERTIFICATE']) || empty($allDocuments['MIGRATION CERTIFICATE']) )
+    ) {
         $flags[] = [
             'type' => 'CRITICAL',
             'message' => 'School TC / Migration certificate is mandatory'
